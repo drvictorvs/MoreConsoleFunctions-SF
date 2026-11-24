@@ -1,7 +1,7 @@
 @echo off
 setlocal
 rem Each path below can be overridden by an environment variable of the same name.
-rem Compiles scripts\Source\MoreConsoleFunctions_SFDiagnostics.psc and MoreConsoleFunctions_SF.psc into dist\Data\Scripts with the
+rem Compiles the three scripts in scripts\Source (MoreConsoleFunctions_SFDiagnostics, _SFEdits, _SF) into dist\Data\Scripts with the
 rem Creation Kit's Papyrus compiler. Check the paths below first.
 
 rem Your Starfield folder (the one with Starfield.exe)
@@ -40,7 +40,7 @@ rem folder (scripts\Source), which is also how it works out the script's name.
 set "OUT=%~dp0dist\Data\Scripts"
 if not exist "%OUT%" mkdir "%OUT%"
 set "FAILED="
-for %%S in (MoreConsoleFunctions_SFDiagnostics MoreConsoleFunctions_SF) do (
+for %%S in (MoreConsoleFunctions_SFDiagnostics MoreConsoleFunctions_SFEdits MoreConsoleFunctions_SF) do (
   "%COMPILER%" "%%S.psc" -f="%FLAGS%" -i="%IMPORTS%" -o="%OUT%"
   if errorlevel 1 (
     echo.
@@ -59,8 +59,10 @@ if defined MOD_SCRIPTS (
   if exist "%MOD_SCRIPTS%\" (
     copy /y "%OUT%\MoreConsoleFunctions_SF.pex" "%MOD_SCRIPTS%\" >nul
     copy /y "%OUT%\MoreConsoleFunctions_SFDiagnostics.pex" "%MOD_SCRIPTS%\" >nul
-    echo Copied MoreConsoleFunctions_SF.pex and MoreConsoleFunctions_SFDiagnostics.pex to "%MOD_SCRIPTS%".
-    if exist "%MOD_SCRIPTS%\MoreConsoleFunctions_SFNative.pex" echo Old transporter scripts are still there ^(MoreConsoleFunctions_SFNative.pex, MoreConsoleFunctions_SFBridge.pex^): delete them; Transporter-SF replaces them.
+    copy /y "%OUT%\MoreConsoleFunctions_SFEdits.pex" "%MOD_SCRIPTS%\" >nul
+    echo Copied MoreConsoleFunctions_SF.pex, MoreConsoleFunctions_SFDiagnostics.pex and MoreConsoleFunctions_SFEdits.pex to "%MOD_SCRIPTS%".
+    if exist "%MOD_SCRIPTS%\CCFE_SF.pex" echo Old CCFE_SF.pex / CCFE_SFDiagnostics.pex are still there: delete them, MoreConsoleFunctions_SF replaces them.
+    if exist "%MOD_SCRIPTS%\CCFE_SFNative.pex" echo Old transporter scripts are still there ^(CCFE_SFNative.pex, CCFE_SFBridge.pex^): delete them; Transporter-SF replaces them.
   ) else (
     echo MOD_SCRIPTS folder not found: "%MOD_SCRIPTS%" ^(copy the .pex files yourself^)
   )

@@ -40,6 +40,10 @@ namespace
 		Command{ "GetWornInfo", "GetWornInfo" },
 		Command{ "GetSlotConflicts", "GetSlotConflicts" },
 		Command{ "GetLoaded3DInfo", "GetLoaded3DInfo" },
+		Command{ "SetBipedSlots", "SetBipedSlots" },
+		Command{ "AddBipedSlots", "AddBipedSlots" },
+		Command{ "RemoveBipedSlots", "RemoveBipedSlots" },
+		Command{ "SetAddonModel", "SetAddonModel" },
 	};
 
 	// MCF hands over the arguments already split (and with quotes removed); the

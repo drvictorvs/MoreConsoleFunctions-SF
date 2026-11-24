@@ -1,5 +1,6 @@
 #include "Diagnostics.h"
 
+#include "Edits.h"
 #include "Memory.h"
 
 #include <unordered_map>
@@ -196,7 +197,7 @@ namespace Diagnostics
 			}
 			constexpr std::ptrdiff_t kHeaderOffset = 0x160;
 			std::vector<SlotNames>   candidates;
-			for (std::ptrdiff_t offset = 0x40; offset <= 0x800; offset += 8) {
+			for (std::ptrdiff_t offset = 0x100; offset <= 0x400 && !Memory::OutOfTime(); offset += 8) {
 				if (auto names = SlotNamesAt(a_race, offset)) {
 					candidates.push_back({ *names, offset });
 				}
@@ -218,7 +219,9 @@ namespace Diagnostics
 			if (chosen.offset < 0 && !candidates.empty()) {
 				chosen = candidates.front();
 			}
-			cache.emplace(a_race, chosen);
+			if (!Memory::OutOfTime()) {
+				cache.emplace(a_race, chosen);
+			}
 			return chosen;
 		}
 
@@ -276,6 +279,7 @@ namespace Diagnostics
 			const auto sexName = a_sex == 0 ? "male" : a_sex == 1 ? "female" : "sex unknown";
 			lines.push_back(std::format("SLOT CONFLICTS: {}, race {}, {}", Label(a_actor), Label(a_race), sexName));
 
+			REX::INFO("SlotReport: slot names");
 			const auto slotNames = FindSlotNames(a_race);
 			auto       slotLabel = [&](int a_slot) {
                 const auto& name = slotNames.offset >= 0 ? slotNames.names[a_slot] : std::string{};
@@ -283,6 +287,7 @@ namespace Diagnostics
 			};
 
 			// The skin: the NPC's own, else the race's (what TESNPC::GetSkin does).
+			REX::INFO("SlotReport: skin and worn items");
 			const RE::TESForm* skin = ComponentForm(a_base, "BGSSkinForm", "TESObjectARMO");
 			const char*        skinFrom = "the NPC";
 			if (!skin) {
@@ -306,6 +311,7 @@ namespace Diagnostics
 				}
 			}
 
+			REX::INFO("SlotReport: armor addons");
 			std::vector<Addon> addons;
 			for (std::size_t i = 0; i < a_addons.size(); ++i) {
 				const int owner = i < a_owners.size() ? a_owners[i] : -1;
@@ -316,6 +322,7 @@ namespace Diagnostics
 
 			// Check the in-memory addon list against Cassiopeia's for the worn items, then use it
 			// for the skin, which isn't an inventory item Cassiopeia can read.
+			REX::INFO("SlotReport: addon lists");
 			int            listsChecked = 0;
 			int            listsMatching = 0;
 			std::ptrdiff_t addonListAt = -1;
@@ -638,6 +645,17 @@ namespace Diagnostics
 
 		// ---- the script functions -------------------------------------------------------------
 
+		// Each report gets this long on the game's main thread; the game is frozen meanwhile.
+		constexpr std::chrono::milliseconds kBudget{ 2000 };
+
+		void FinishBudget(Lines& a_lines)
+		{
+			if (Memory::OutOfTime()) {
+				a_lines.push_back(std::format("STOPPED after {} s: reading took too long, so the report above is incomplete.", kBudget.count() / 1000.0));
+			}
+			Memory::EndBudget();
+		}
+
 		bool IsAvailable(VM&, std::uint32_t, std::monostate)
 		{
 			return true;
@@ -653,6 +671,7 @@ namespace Diagnostics
 			std::vector<RE::TESObjectARMO*> a_worn, std::vector<RE::TESObjectARMA*> a_addons, std::vector<std::int32_t> a_owners)
 		{
 			Lines lines;
+			Memory::StartBudget(kBudget);
 			try {
 				if (!a_actor) {
 					lines.push_back("GetSlotConflicts: no actor");
@@ -662,12 +681,14 @@ namespace Diagnostics
 			} catch (const std::exception& e) {
 				lines.push_back(std::format("GetSlotConflicts failed: {}", e.what()));
 			}
+			FinishBudget(lines);
 			return Finish("SlotReport", lines);
 		}
 
 		std::vector<RE::BSFixedString> Loaded3DReport(VM&, std::uint32_t, std::monostate, RE::TESObjectREFR* a_ref, RE::BSFixedString a_filter, std::int32_t a_maxDepth)
 		{
 			Lines lines;
+			Memory::StartBudget(kBudget);
 			try {
 				if (!a_ref) {
 					lines.push_back("GetLoaded3DInfo: no reference");
@@ -678,6 +699,7 @@ namespace Diagnostics
 			} catch (const std::exception& e) {
 				lines.push_back(std::format("GetLoaded3DInfo failed: {}", e.what()));
 			}
+			FinishBudget(lines);
 			return Finish("Loaded3DReport", lines);
 		}
 
@@ -689,6 +711,7 @@ namespace Diagnostics
 			a_vm.BindNativeMethod(kNativeScript, "SlotReport", &SlotReport, false, false);
 			a_vm.BindNativeMethod(kNativeScript, "Loaded3DReport", &Loaded3DReport, false, false);
 			REX::INFO("Diagnostics: script functions bound on {}", kNativeScript);
+			Edits::Bind(a_vm);
 		}
 
 		void OnVMBind(VM** a_vm)

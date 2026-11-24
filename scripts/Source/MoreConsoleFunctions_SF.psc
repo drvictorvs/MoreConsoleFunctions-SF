@@ -1,7 +1,7 @@
 ScriptName MoreConsoleFunctions_SF Hidden
-{Console commands ported from MoreConsoleFunctions_VictorCustomScript (Skyrim) to Starfield.
+{Console commands ported from CCFE_VictorCustomScript (Skyrim) to Starfield.
  Every command is a global function that takes one string of space-separated arguments,
- the way MoreConsoleFunctions passed sArgument, so it works two ways:
+ the way CCFE passed sArgument, so it works two ways:
    - typed as a short command, through MoreConsoleFunctions_SF.dll and ModernCommandFramework:  GetFormInfo 14
    - typed with the vanilla console's CallGlobalFunction:  cgf "MoreConsoleFunctions_SF.GetFormInfo" "14"
  Where a command takes an optional reference, it falls back to the console-selected reference.
@@ -948,7 +948,7 @@ Bool Function DllReady(String asCommand) global
 	If MoreConsoleFunctions_SFDiagnostics.IsAvailable()
 		Return True
 	EndIf
-	Print(asCommand + ": needs MoreConsoleFunctions_SF.dll 0.7.2 or later and MoreConsoleFunctions_SFDiagnostics.pex (see MoreConsoleFunctions_SF.log)")
+	Print(asCommand + ": needs MoreConsoleFunctions_SF.dll 0.8.0 or later and MoreConsoleFunctions_SFDiagnostics.pex / MoreConsoleFunctions_SFEdits.pex (see MoreConsoleFunctions_SF.log)")
 	Return False
 EndFunction
 
@@ -1032,4 +1032,164 @@ Function GetLoaded3DInfo(String asArgs = "") global
 		Return
 	EndIf
 	PrintLines(MoreConsoleFunctions_SFDiagnostics.Loaded3DReport(target, filter, depth))
+EndFunction
+
+; =====================================================================================
+; Setters that need MoreConsoleFunctions_SF.dll (MoreConsoleFunctions_SFEdits)
+;   SetBipedSlots / AddBipedSlots / RemoveBipedSlots   an armor's or armor addon's slots
+;   SetAddonModel                                       an armor addon's model path
+; They edit the base form in memory for this session only (nothing is saved; a restart undoes
+; them), then re-equip the items the actor wears that use it, so the change shows.
+; =====================================================================================
+
+; "35,36" -> [35, 36]; "none" -> an empty list.
+Int[] Function ParseSlots(String asList) global
+	Int[] slots = new Int[0]
+	If asList == "none"
+		Return slots
+	EndIf
+	String[] parts = CassiopeiaPapyrusExtender.SplitStrKC(asList, ",")
+	Int i = 0
+	While parts != None && i < parts.Length
+		If parts[i] != ""
+			slots.Add(parts[i] as Int)
+		EndIf
+		i += 1
+	EndWhile
+	Return slots
+EndFunction
+
+Bool Function IsEditError(String asResult) global
+	Return asResult == "" || CassiopeiaPapyrusExtender.FindStr(asResult, "error:") == 0
+EndFunction
+
+; Re-equips the worn armor that is akArmor, or that uses akAddon, so its 3D is built again.
+Function ReequipUsers(Actor akActor, Armor akArmor, ArmorAddon akAddon) global
+	If akActor == None
+		Return
+	EndIf
+	Armor[] users = new Armor[0]
+	Int[] indexes = CassiopeiaPapyrusExtender.GetEquippedItemIndexes(akActor)
+	Form[] items = CassiopeiaPapyrusExtender.GetInventoryItems(akActor, True)
+	Int i = 0
+	While indexes != None && items != None && i < indexes.Length
+		Int index = indexes[i]
+		If index >= 0 && index < items.Length
+			Armor worn = items[index] as Armor
+			If worn && akArmor && worn == akArmor
+				users.Add(worn)
+			ElseIf worn && akAddon
+				ArmorAddon[] addons = CassiopeiaPapyrusExtender.GetArmorAddonsOfArmorItem(akActor, index)
+				If addons != None && addons.Find(akAddon) >= 0
+					users.Add(worn)
+				EndIf
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+	Int u = 0
+	While u < users.Length
+		akActor.UnequipItem(users[u], False, True)
+		akActor.EquipItem(users[u], False, True)
+		u += 1
+	EndWhile
+	Print("  - re-equipped " + users.Length + " worn item(s) on " + FullID(akActor))
+EndFunction
+
+; An armor or armor addon from a token; a reference counts as its base object.
+Form Function ArmorFormFromToken(String asToken) global
+	Form found = FormFromToken(asToken)
+	ObjectReference placed = found as ObjectReference
+	If placed
+		found = placed.GetBaseObject()
+	EndIf
+	If (found as Armor) || (found as ArmorAddon)
+		Return found
+	EndIf
+	Return None
+EndFunction
+
+Function EditSlotsCommand(String asArgs, Int aiMode, String asCommand) global
+	String[] args = Tokens(asArgs)
+	If Arg(args, 0) == "?" || ArgCount(args) < 2
+		Print("Usage: " + asCommand + " <armor|armor addon> <slots> [actor]   slots: 35,36 (0-63)" + StringIf(aiMode == 0, " or none", ""))
+		Print("       Edits the form in memory for this session only, then re-equips what the actor (default: selected, else player) wears that uses it.")
+		Return
+	EndIf
+	If !DllReady(asCommand)
+		Return
+	EndIf
+	Form target = ArmorFormFromToken(Arg(args, 0))
+	If target == None
+		Print(asCommand + ": " + Arg(args, 0) + " isn't an armor or armor addon")
+		Return
+	EndIf
+	String result = MoreConsoleFunctions_SFEdits.EditBipedSlots(target as Armor, target as ArmorAddon, aiMode, ParseSlots(Arg(args, 1)))
+	Print(asCommand + ": " + result)
+	If !IsEditError(result)
+		ReequipUsers(ActorOrPlayer(Arg(args, 2)), target as Armor, target as ArmorAddon)
+	EndIf
+EndFunction
+
+String Function StringIf(Bool abCondition, String asYes, String asNo) global
+	If abCondition
+		Return asYes
+	EndIf
+	Return asNo
+EndFunction
+
+Function SetBipedSlots(String asArgs = "") global
+	EditSlotsCommand(asArgs, 0, "SetBipedSlots")
+EndFunction
+
+Function AddBipedSlots(String asArgs = "") global
+	EditSlotsCommand(asArgs, 1, "AddBipedSlots")
+EndFunction
+
+Function RemoveBipedSlots(String asArgs = "") global
+	EditSlotsCommand(asArgs, 2, "RemoveBipedSlots")
+EndFunction
+
+; SetAddonModel <armor addon> <male|female|both> <path>   (the path may contain spaces)
+Function SetAddonModel(String asArgs = "") global
+	String[] args = Tokens(asArgs)
+	If Arg(args, 0) == "?" || ArgCount(args) < 3
+		Print("Usage: SetAddonModel <armor addon> <male|female|both> <path>   e.g. SetAddonModel 0001ABCD male Clothes\\Outfit\\Body_M.nif")
+		Print("       Edits the addon in memory for this session only, then re-equips what the selected actor (else the player) wears that uses it.")
+		Return
+	EndIf
+	If !DllReady("SetAddonModel")
+		Return
+	EndIf
+	ArmorAddon addon = ArmorFormFromToken(Arg(args, 0)) as ArmorAddon
+	If addon == None
+		Print("SetAddonModel: " + Arg(args, 0) + " isn't an armor addon")
+		Return
+	EndIf
+	String which = Arg(args, 1)
+	If which != "male" && which != "female" && which != "both"
+		Print("SetAddonModel: say male, female or both")
+		Return
+	EndIf
+	String path = Arg(args, 2)
+	Int n = ArgCount(args)
+	Int i = 3
+	While i < n
+		path += " " + Arg(args, i)
+		i += 1
+	EndWhile
+	Bool changed = False
+	If which != "female"
+		String result = MoreConsoleFunctions_SFEdits.SetAddonModel(addon, 0, path)
+		Print("SetAddonModel: " + result)
+		changed = changed || !IsEditError(result)
+	EndIf
+	If which != "male"
+		String femaleResult = MoreConsoleFunctions_SFEdits.SetAddonModel(addon, 1, path)
+		Print("SetAddonModel: " + femaleResult)
+		changed = changed || !IsEditError(femaleResult)
+	EndIf
+	If changed
+		ReequipUsers(ActorOrPlayer(""), None, addon)
+	EndIf
 EndFunction

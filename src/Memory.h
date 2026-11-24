@@ -9,6 +9,12 @@
 // that is committed and readable, and say so when something can't be found.
 namespace Memory
 {
+	// A time limit for the reads of one report, so a scan can never hold the game: once it runs
+	// out, every read fails and OutOfTime() says so. Set and cleared on the calling thread.
+	void StartBudget(std::chrono::milliseconds a_limit) noexcept;
+	void EndBudget() noexcept;
+	[[nodiscard]] bool OutOfTime() noexcept;
+
 	[[nodiscard]] bool Readable(std::uintptr_t a_address, std::size_t a_size) noexcept;
 	[[nodiscard]] bool Read(std::uintptr_t a_address, void* a_out, std::size_t a_size) noexcept;
 
