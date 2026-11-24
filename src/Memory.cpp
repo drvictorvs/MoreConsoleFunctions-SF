@@ -1,5 +1,6 @@
 #include "Memory.h"
 
+#include <chrono>
 #include <cstring>
 #include <mutex>
 #include <unordered_map>
@@ -202,13 +203,66 @@ namespace Memory
 		}
 	}
 
+	namespace
+	{
+		using Clock = std::chrono::steady_clock;
+
+		thread_local bool              t_budgetSet = false;
+		thread_local bool              t_outOfTime = false;
+		thread_local Clock::time_point t_deadline{};
+		thread_local std::uint32_t     t_checks = 0;
+
+		// The last readable region VirtualQuery reported. Most reads land in the same few
+		// regions, and asking the kernel each time is what made the first version take minutes.
+		thread_local std::uintptr_t t_regionBegin = 0;
+		thread_local std::uintptr_t t_regionEnd = 0;
+
+		bool BudgetLeft() noexcept
+		{
+			if (!t_budgetSet) {
+				return true;
+			}
+			if (t_outOfTime) {
+				return false;
+			}
+			if ((++t_checks & 0xFF) == 0 && Clock::now() > t_deadline) {
+				t_outOfTime = true;
+				return false;
+			}
+			return true;
+		}
+	}
+
+	void StartBudget(std::chrono::milliseconds a_limit) noexcept
+	{
+		t_budgetSet = true;
+		t_outOfTime = false;
+		t_checks = 0;
+		t_deadline = Clock::now() + a_limit;
+		t_regionBegin = t_regionEnd = 0;  // regions change between reports
+	}
+
+	void EndBudget() noexcept
+	{
+		t_budgetSet = false;
+		t_regionBegin = t_regionEnd = 0;
+	}
+
+	bool OutOfTime() noexcept
+	{
+		return t_outOfTime;
+	}
+
 	bool Readable(std::uintptr_t a_address, std::size_t a_size) noexcept
 	{
-		if (a_address == 0 || a_size == 0 || a_address + a_size < a_address) {
+		if (a_address == 0 || a_size == 0 || a_address + a_size < a_address || !BudgetLeft()) {
 			return false;
 		}
 		std::uintptr_t cursor = a_address;
 		const auto     end = a_address + a_size;
+		if (cursor >= t_regionBegin && end <= t_regionEnd) {
+			return true;
+		}
 		while (cursor < end) {
 			REX::W32::MEMORY_BASIC_INFORMATION info{};
 			if (REX::W32::VirtualQuery(reinterpret_cast<const void*>(cursor), &info, sizeof(info)) == 0) {
@@ -224,6 +278,8 @@ namespace Memory
 			if (regionEnd <= cursor) {
 				return false;
 			}
+			t_regionBegin = reinterpret_cast<std::uintptr_t>(info.baseAddress);
+			t_regionEnd = regionEnd;
 			cursor = std::min(end, regionEnd);
 		}
 		return true;
