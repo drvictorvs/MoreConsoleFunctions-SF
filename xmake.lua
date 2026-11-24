@@ -2,13 +2,14 @@
 -- The transporter that used to live here is its own project now (Transporter-SF).
 -- Built on the libxse CommonLibSF plugin template (https://github.com/libxse/commonlibsf-template).
 
--- CommonLibSF is expected in lib/commonlibsf (see README: "Build the plugin"). OSF's fork
+-- CommonLibSF is expected next to this project, in ../commonlibsf, shared by the plugin projects
+-- (see README: "Build the plugin"). OSF's fork
 -- (github.com/ozooma10/commonlibsf) at the same commit as Transporter-SF, so both plugins build
 -- against the same game structures.
-includes("lib/commonlibsf")
+includes("../commonlibsf")
 
 set_project("MoreConsoleFunctions-SF")
-set_version("0.7.2")
+set_version("0.8.0")
 set_license("GPL-3.0")  -- CommonLibSF's license, with its modding exception
 set_languages("c++23")
 set_warnings("allextra")
