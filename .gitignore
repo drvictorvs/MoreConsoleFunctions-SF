@@ -1,5 +1,31 @@
+# xmake build output and caches
 build/
 .xmake/
 vsxmake*/
+compile_commands.json
+
+# CommonLibSF lives in ../commonlibsf now; an old in-project checkout stays out of the repo
 lib/
+
+# Compiled scripts and plugin binaries (built by compile_papyrus.bat and xmake)
+dist/
 *.pex
+*.dll
+*.pdb
+*.lib
+*.exp
+
+# Editors and IDEs
+.vs/
+.vscode/
+.cache/
+.clangd/
+*.user
+
+# Logs and crash dumps
+*.log
+*.dmp
+
+# Windows
+Thumbs.db
+desktop.ini
